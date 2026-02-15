@@ -99,6 +99,7 @@ const context = createContext<{
   showThinking: () => boolean
   showTimestamps: () => boolean
   showDetails: () => boolean
+  showInstrumentation: () => boolean
   diffWrapMode: () => "word" | "none"
   sync: ReturnType<typeof useSync>
 }>()
@@ -149,6 +150,7 @@ export function Session() {
   const [timestamps, setTimestamps] = kv.signal<"hide" | "show">("timestamps", "hide")
   const [showDetails, setShowDetails] = kv.signal("tool_details_visibility", true)
   const [showAssistantMetadata, setShowAssistantMetadata] = kv.signal("assistant_metadata_visibility", true)
+  const [showInstrumentation, setShowInstrumentation] = kv.signal("message_instrumentation_visibility", true)
   const [showScrollbar, setShowScrollbar] = kv.signal("scrollbar_visible", false)
   const [showHeader, setShowHeader] = kv.signal("header_visible", true)
   const [diffWrapMode] = kv.signal<"word" | "none">("diff_wrap_mode", "word")
@@ -575,6 +577,19 @@ export function Session() {
       },
     },
     {
+      title: showInstrumentation() ? "Hide message instrumentation" : "Show message instrumentation",
+      value: "session.toggle.instrumentation",
+      category: "Session",
+      slash: {
+        name: "instrumentation",
+        aliases: ["toggle-instrumentation"],
+      },
+      onSelect: (dialog) => {
+        setShowInstrumentation((prev) => !prev)
+        dialog.clear()
+      },
+    },
+    {
       title: "Toggle session scrollbar",
       value: "session.toggle.scrollbar",
       keybind: "scrollbar_toggle",
@@ -967,6 +982,7 @@ export function Session() {
         showThinking,
         showTimestamps,
         showDetails,
+        showInstrumentation,
         diffWrapMode,
         sync,
       }}
@@ -1255,12 +1271,8 @@ function UserMessage(props: {
   )
 }
 
-function AssistantMessage(props: {
-  message: AssistantMessage
-  parts: Part[]
-  last: boolean
-  next?: AssistantMessage
-}) {
+function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; last: boolean; next?: AssistantMessage }) {
+  const ctx = use()
   const local = useLocal()
   const { theme } = useTheme()
   const sync = useSync()
@@ -1297,38 +1309,33 @@ function AssistantMessage(props: {
           )
         }}
       </For>
-      <box flexDirection="row" gap={1} justifyContent="flex-end">
-        <text>
-          <Show when={props.message.tokens}>
-            <span style={{ fg: theme.textMuted }}>
-              {" "}
-              ·{" "}
-              {(
-                props.message.tokens.input + (props.message.tokens.cache?.read ?? 0)
-              ).toLocaleString()}{" "}
-              tokens
-              {props.next?.tokens
-                ? ` (+${(
-                    props.next.tokens.input +
-                    (props.next.tokens.cache?.read ?? 0) -
-                    (props.message.tokens.input + (props.message.tokens.cache?.read ?? 0))
-                  ).toLocaleString()} on next request)`
-                : ""}
-            </span>
-          </Show>
-        </text>
-        <box
-          onMouseOver={() => setHover(true)}
-          onMouseOut={() => setHover(false)}
-          onMouseUp={() =>
-            dialog.replace(() => <DialogInspect message={props.message} parts={props.parts} />)
-          }
-          backgroundColor={hover() ? theme.backgroundElement : undefined}
-        >
-          <text fg={theme.accent}>[?]</text>
+      <Show when={ctx.showInstrumentation()}>
+        <box flexDirection="row" gap={1} justifyContent="flex-end">
+          <text>
+            <Show when={props.message.tokens}>
+              <span style={{ fg: theme.textMuted }}>
+                {" "}
+                · {(props.message.tokens.input + (props.message.tokens.cache?.read ?? 0)).toLocaleString()} tokens
+                {props.next?.tokens?.input
+                  ? ` (+${(
+                      props.next.tokens.input +
+                      (props.next.tokens.cache?.read ?? 0) -
+                      (props.message.tokens.input + (props.message.tokens.cache?.read ?? 0))
+                    ).toLocaleString()})`
+                  : ""}
+              </span>
+            </Show>
+          </text>
+          <box
+            onMouseOver={() => setHover(true)}
+            onMouseOut={() => setHover(false)}
+            onMouseUp={() => dialog.replace(() => <DialogInspect message={props.message} parts={props.parts} />)}
+            backgroundColor={hover() ? theme.backgroundElement : undefined}
+          >
+            <text fg={theme.accent}>[?]</text>
+          </box>
         </box>
-      </box>
-
+      </Show>
 
       <Show when={props.message.error && props.message.error.name !== "MessageAbortedError"}>
         <box
