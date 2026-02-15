@@ -4,7 +4,8 @@ import { useTheme } from "@tui/context/theme"
 import type { Part, AssistantMessage } from "@opencode-ai/sdk/v2"
 import { Clipboard } from "../../util/clipboard"
 import { useToast } from "../../ui/toast"
-import { createSignal, Show } from "solid-js"
+import { createMemo, createSignal, Show } from "solid-js"
+import { Details } from "../../ui/details"
 
 interface DialogInspectProps {
   message: AssistantMessage
@@ -12,7 +13,6 @@ interface DialogInspectProps {
 }
 
 type FileAttachment = Extract<Part, { type: "file" }>
-
 
 // Convert the tool call / return json into a YAML-like format for better readeability.
 function toYaml(obj: any, indent = 0): string {
@@ -86,7 +86,7 @@ function attachmentLabel(file: FileAttachment) {
   return parts.join(" | ")
 }
 
-function PartView(props: { part: Part; theme: any; syntax: any }) {
+function PartView(props: { part: Part; theme: any; syntax: any; toolCount: number }) {
   const { part, theme, syntax } = props
 
   if (part.type === "text") {
@@ -119,38 +119,48 @@ function PartView(props: { part: Part; theme: any; syntax: any }) {
   if (part.type === "tool") {
     const attachments = part.state.status === "completed" ? (part.state.attachments ?? []) : []
     return (
-      <box flexDirection="column" borderColor={theme.borderSubtle} borderStyle="single" padding={1}>
-        <text attributes={TextAttributes.BOLD} fg={theme.textMuted}>
-          Tool Use: {part.tool} ({part.state.status})
-        </text>
-        <box marginTop={1}>
-          <text fg={theme.textMuted}>Input:</text>
-          <text fg={theme.text}>{toYaml(part.state.input).trim()}</text>
-        </box>
-        <Show when={part.state.status === "completed" && (part.state as any).output}>
-          <box marginTop={1}>
-            <text fg={theme.textMuted}>Output:</text>
-            <text fg={theme.text}>{(part.state as any).output}</text>
-          </box>
-        </Show>
-        <Show when={attachments.length > 0}>
-          <box marginTop={1} flexDirection="column">
-            <text fg={theme.textMuted}>Attachments:</text>
-            <box flexDirection="column" marginLeft={2}>
-              {attachments.map((file, idx) => (
-                <text fg={theme.text}>
-                  {idx + 1}. {attachmentLabel(file)}
-                </text>
-              ))}
+      <box
+        flexDirection="column"
+        borderColor={theme.borderSubtle}
+        borderStyle="single"
+        paddingLeft={1}
+        paddingRight={1}
+      >
+        <Details
+          summary={`Tool Use: ${part.tool} (${part.state.status})`}
+          defaultOpen={part.state.status === "error" || props.toolCount === 1}
+        >
+          <box flexDirection="column">
+            <box>
+              <text fg={theme.textMuted}>Input:</text>
+              <text fg={theme.text}>{toYaml(part.state.input).trim()}</text>
             </box>
+            <Show when={part.state.status === "completed" && (part.state as any).output}>
+              <box marginTop={1}>
+                <text fg={theme.textMuted}>Output:</text>
+                <text fg={theme.text}>{(part.state as any).output}</text>
+              </box>
+            </Show>
+            <Show when={attachments.length > 0}>
+              <box marginTop={1} flexDirection="column">
+                <text fg={theme.textMuted}>Attachments:</text>
+                <box flexDirection="column" marginLeft={2}>
+                  {attachments.map((file, idx) => (
+                    <text fg={theme.text}>
+                      {idx + 1}. {attachmentLabel(file)}
+                    </text>
+                  ))}
+                </box>
+              </box>
+            </Show>
+            <Show when={part.state.status === "error" && (part.state as any).error}>
+              <box marginTop={1}>
+                <text fg={theme.error}>Error:</text>
+                <text fg={theme.error}>{(part.state as any).error}</text>
+              </box>
+            </Show>
           </box>
-        </Show>
-        <Show when={part.state.status === "error" && (part.state as any).error}>
-          <box marginTop={1}>
-            <text fg={theme.error}>Error:</text>
-            <text fg={theme.error}>{(part.state as any).error}</text>
-          </box>
-        </Show>
+        </Details>
       </box>
     )
   }
@@ -199,6 +209,7 @@ export function DialogInspect(props: DialogInspectProps) {
   const { theme, syntax } = useTheme()
   const dialog = useDialog()
   const toast = useToast()
+  const toolCount = createMemo(() => props.parts.filter((part) => part.type === "tool").length)
 
   // State for raw mode
   const [showRaw, setShowRaw] = createSignal(false)
@@ -236,11 +247,11 @@ export function DialogInspect(props: DialogInspectProps) {
             />
           }
         >
-          <box flexDirection="column" gap={1}>
+          <box flexDirection="column">
             {props.parts
               .filter((p) => !["step-start", "step-finish", "reasoning"].includes(p.type))
               .map((part) => (
-                <PartView part={part} theme={theme} syntax={syntax} />
+                <PartView part={part} theme={theme} syntax={syntax} toolCount={toolCount()} />
               ))}
           </box>
         </Show>
